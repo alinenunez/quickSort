@@ -139,18 +139,3 @@ addi sp, sp, 4
 jalr x0, ra, 0              # Retorna ao QUICKSORT
 
 EXIT:                       # Fim do programa
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-OUOUEIEI EIII SEM VOCE NAO VIVEREIII
