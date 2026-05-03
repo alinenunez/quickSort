@@ -5,16 +5,16 @@
 #define TAMANHO_MAXIMO 100
 
 void trocarValores(int *valorA, int *valorB) { 
-	int valorTemporario = *valorA;
+	int valorTemp = *valorA;
 	*valorA = *valorB;
-	*valorB = valorTemporario;
+	*valorB = valorTemp;
 }
 
 int divide(int vetor[], int inicio, int fim) {
-	int alvo = vetor[fim];
+	int referencia = vetor[fim];
 	int indiceMenor = inicio - 1;
 	for (int indiceAtual = inicio; indiceAtual < fim; indiceAtual++) {
-		if (vetor[indiceAtual] <= alvo) {
+		if (vetor[indiceAtual] <= referencia) {
 			indiceMenor++;
 			trocarValores(&vetor[indiceMenor], &vetor[indiceAtual]);
 		}
@@ -25,9 +25,9 @@ int divide(int vetor[], int inicio, int fim) {
 
 void quicksort(int vetor[], int inicio, int fim) {
 	if (inicio < fim) {
-		int indiceAlvo = divide(vetor, inicio, fim);
-		quicksort(vetor, inicio, indiceAlvo - 1);
-		quicksort(vetor, indiceAlvo + 1, fim);
+		int indiceRef = divide(vetor, inicio, fim);
+		quicksort(vetor, inicio, indiceRef - 1);
+		quicksort(vetor, indiceRef + 1, fim);
 	}
 }
 
