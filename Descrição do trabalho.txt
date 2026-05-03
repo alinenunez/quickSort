@@ -1,0 +1,39 @@
+Trabalho 1: Programação em Assembly do RISC-V
+GEX1213 - Organização de Computadores
+Março de 2026
+Professor: Ricardo Parizotto
+1 Descrição
+O objetivo deste trabalho é desenvolver e documentar a implementação de uma estrutura de dados
+ou algoritmo de ordenação utilizando a linguagem de montagem do RISC-V. O foco não é apenas o
+código funcional, mas a compreensão dos detalhes de baixo nível, como a manipulação de registradores,
+pilha (stack ) e memória.
+1.1 Especificações Gerais
+O trabalho pode ser realizado em grupos de até 5 pessoas. Os integrantes tem liberdade de escolher
+entre os seguintes algoritmos/estruturas: Ordenação: Quick Sort, Merge Sort, Radix Sort, Heap Sort;
+Estruturas de Dados: Árvore Binária, Heap de Mínimo/Máximo, Lista Encadeada; Busca: Busca
+Binária, Busca em Profundidade (DFS).
+1.2 Requisitos Obrigatórios
+O programa deve ser testado e validado em um dos seguintes ambientes: gem5, RARS, Venus ou
+Ripes. O código deve utilizar obrigatoriamente instruções de salto e ligação (jal, jalr) e a convenção
+de salvamento/restauração de registradores na stack. Além disso, a estrutura ou algoritmo deve realizar
+o gerenciamento dinâmico de memória, utilizando chamadas de sistema apropriadas para alocação no
+heap, simulando o comportamento de um malloc em C.
+2 Entrega e Avaliação
+A entrega deve ser até as 23h00 do dia 12 de maio. A entrega deve conter o código-fonte (.riscv
+ou .s) e um relatório em PDF. O relatório deve ser guiado por “Desafios e Soluções”, explicando (1)
+a lógica da estrutura ou algoritmo escolhido; (2) A estratégia utilizada para a alocação dinâmica e a
+organização das funções. (3) Erros encontrados durante o desenvolvimento (ex: segmentation faults,
+problemas de ponteiros) e como foram resolvidos.
+A tabela 1 apresenta os critérios de avaliação.
+Tabela 1: Critérios para avaliação.
+Critério Descrição Peso
+Funcionalidade Execução correta nos simuladores, respeitando os requisitos de
+funções e alocação.
+5.0
+Relatório e Clareza Documentação detalhada dos desafios, código bem comentado e
+organização do texto.
+5.0
+Observação: O uso de IA generativa é permitido, desde que os estudantes indiquem explicitamente
+no relatório em qual trecho ou desafio a ferramenta foi utilizada. A responsabilidade pelo funcionamento
+e pela explicação técnica do código é inteiramente do grupo.
+1
