@@ -1,0 +1,289 @@
+# ============================================================
+#  LISTA SIMPLESMENTE ENCADEADA — RISC-V Assembly
+#  Compatível com: RARS / Venus
+# ============================================================
+#
+#  BLOCO 1 — DEFINIÇÃO DO NÓ (mentalidade de memória)
+#  ─────────────────────────────────────────────────
+#  Cada nó ocupa 8 bytes contíguos no heap:
+#
+#  ┌─────────────────────┬─────────────────────┐
+#  │  offset 0  (4 bytes)│  offset 4  (4 bytes)│
+#  │  valor (int id)     │  *next (ponteiro)   │
+#  └─────────────────────┴─────────────────────┘
+#
+#  Para acessar os campos de um nó cujo endereço está em s2:
+#    lw  t1, 0(s2)   →  lê   o valor  (nó->id)
+#    lw  t2, 4(s2)   →  lê   o próximo (nó->next)
+#    sw  t1, 0(s2)   →  escreve valor
+#    sw  t2, 4(s2)   →  escreve próximo
+#
+#  NULL (fim da lista) = endereço 0 = registrador zero
+#
+#  CORREÇÃO APLICADA: imprime_lista usava t0 como ponteiro
+#  de percurso, mas ecall pode corromper registradores t.
+#  Substituído por s2 (callee-saved — ecall preserva s).
+# ============================================================
+
+
+# ============================================================
+#  SEÇÃO DE DADOS GLOBAIS
+# ============================================================
+.data
+    cabeca_da_lista: .word 0     # ponteiro global para o 1º nó
+                                 # começa em 0 (lista vazia = NULL)
+    espaco:          .string " " # separador entre os números impressos
+
+
+# ============================================================
+#  SEÇÃO DE CÓDIGO
+# ============================================================
+.text
+.globl main
+
+
+# ────────────────────────────────────────────────────────────
+#  BLOCO 2 — FUNÇÃO PRINCIPAL (main)
+#
+#  Papel: orquestrar as chamadas. Insere valores na lista
+#         e depois chama a impressão para validar.
+#
+#  Registradores usados:
+#    ra  → endereço de retorno (salvo na pilha)
+# ────────────────────────────────────────────────────────────
+main:
+    # ── Prólogo ─────────────────────────────────────────────
+    addi sp, sp, -4          # abre 4 bytes na pilha
+    sw   ra, 0(sp)           # salva ra (chamaremos jal várias vezes)
+
+    # ── Ação 1: insere o valor 10 ───────────────────────────
+    li   a0, 10             # a0 = argumento: valor a inserir
+    jal  ra, insere_lista    # chama insere_lista(10)
+
+    # ── Ação 2: insere o valor 20 ───────────────────────────
+    li   a0, 20              # a0 = argumento: valor a inserir
+    jal  ra, insere_lista    # chama insere_lista(20)
+
+    # ── Ação 3: insere o valor 30 ───────────────────────────
+    li   a0, 30              # a0 = argumento: valor a inserir
+    jal  ra, insere_lista    # chama insere_lista(30)
+
+    # ── Ação 4: imprime a lista para validar ────────────────
+    jal  ra, imprime_lista   # chama imprime_lista()
+
+    # ── Epílogo ─────────────────────────────────────────────
+    lw   ra, 0(sp)           # restaura ra
+    addi sp, sp, 4           # fecha frame
+
+    # ── Encerra o programa (syscall exit) ───────────────────
+    li   a7, 10              # código 10 = exit
+    ecall                    # encerra graciosamente
+
+
+# ────────────────────────────────────────────────────────────
+#  BLOCO 3 — FUNÇÃO DE ALOCAÇÃO (aloca_no)
+#
+#  Simula o malloc(8) do C usando a syscall sbrk (código 9).
+#  sbrk avança o ponteiro do heap e retorna o endereço
+#  do bloco recém-alocado.
+#
+#  Entrada : nenhuma (sempre aloca 8 bytes)
+#  Saída   : a0 = endereço do novo bloco no heap
+#
+#  Registradores:
+#    a0  → tamanho a alocar (entrada) / endereço alocado (saída)
+#    a7  → código da syscall
+#
+#  Nota: esta função NÃO chama outras funções (sem jal interno),
+#        portanto NÃO precisa salvar ra na pilha.
+# ────────────────────────────────────────────────────────────
+aloca_no:
+    li   a0, 8               # a0 = 8 bytes (tamanho do nó)
+    li   a7, 9               # a7 = 9 → syscall sbrk
+    ecall                    # executa: a0 ← endereço alocado no heap
+
+    # a0 agora contém o endereço base do novo nó.
+    # Os 8 bytes estão disponíveis mas com lixo — os campos
+    # serão inicializados por insere_lista.
+
+    ret                      # retorna para insere_lista
+
+
+# ────────────────────────────────────────────────────────────
+#  BLOCO 4 — FUNÇÃO DE INSERÇÃO (insere_lista)
+#
+#  Insere um novo nó NO INÍCIO da lista (mais simples).
+#  O novo nó aponta para quem era o antigo primeiro nó.
+#
+#  Entrada : a0 = valor inteiro a inserir
+#  Saída   : nenhuma (atualiza cabeca_da_lista globalmente)
+#
+#  Esta função CHAMA aloca_no (via jal), portanto:
+#    → ra PRECISA ser salvo na pilha (obrigatório!)
+#    → a0 (o valor) também precisa ser salvo, pois o jal
+#      para aloca_no usa a0 como tamanho e o sobrescreve
+#
+#  Layout da pilha nesta função:
+#    sp + 4 → ra        (endereço de retorno para main)
+#    sp + 0 → valor     (o inteiro que queremos inserir)
+#
+#  Após aloca_no retornar, a0 = endereço do novo nó.
+# ────────────────────────────────────────────────────────────
+insere_lista:
+    # ── Passo 1: Prólogo — salva ra e o valor na pilha ──────
+    addi sp, sp, -8          # abre 8 bytes (2 palavras)
+    sw   ra, 4(sp)           # salva ra   em sp+4
+                             # CRÍTICO: sem isso, o jal abaixo
+                             # sobrescreveria ra e perderíamos
+                             # o caminho de volta para main
+    sw   a0, 0(sp)           # salva o valor (ex: 10) em sp+0
+                             # porque aloca_no vai usar a0
+
+    # ── Passo 2: chama aloca_no ─────────────────────────────
+    jal  ra, aloca_no        # ra ← endereço após este jal
+                             # pula para aloca_no
+                             # retorna com a0 = endereço do nó
+
+    # ── Passo 3: a0 = endereço do novo nó alocado ───────────
+    mv   t0, a0              # t0 = endereço do novo nó
+                             # (guarda em t0 para liberar a0)
+
+    # ── Passo 4: recupera o valor salvo e escreve no nó ─────
+    lw   t1, 0(sp)           # t1 = valor original (ex: 10)
+    sw   t1, 0(t0)           # nó->valor = t1  (offset 0)
+
+    # ── Passo 5: faz o novo nó apontar para a cabeça atual ──
+    la   t2, cabeca_da_lista # t2 = endereço da variável global
+    lw   t3, 0(t2)           # t3 = valor atual de cabeca_da_lista
+                             #    = endereço do antigo 1º nó
+                             #    (ou 0 se lista vazia)
+    sw   t3, 4(t0)           # nó->next = antigo primeiro nó
+                             # (offset 4 do novo nó)
+
+    # ── Passo 6: atualiza cabeca_da_lista = novo nó ─────────
+    sw   t0, 0(t2)           # cabeca_da_lista = endereço do novo nó
+                             # agora o novo nó é o primeiro da lista
+
+    # ── Passo 7: Epílogo — restaura ra e fecha pilha ────────
+    lw   ra, 4(sp)           # restaura ra (volta para main)
+    addi sp, sp, 8           # fecha frame (simetria com o prólogo)
+
+    ret                      # retorna para main
+
+
+# ────────────────────────────────────────────────────────────
+#  BLOCO 5 — FUNÇÃO DE IMPRESSÃO (imprime_lista)
+#
+#  Percorre a lista do início ao fim e imprime cada valor.
+#
+#  Entrada : nenhuma (lê cabeca_da_lista globalmente)
+#  Saída   : nenhuma (imprime via syscall)
+#
+#  ⚠ CORREÇÃO: o ponteiro de percurso usa s2 (não t0).
+#  Motivo: ecall se comporta como chamada de função —
+#  preserva registradores s, mas PODE corromper t.
+#  Com t0, após o ecall do print_string o endereço do
+#  nó se perdia e o lw seguinte lia posição inválida,
+#  prendendo a execução em loop infinito.
+#
+#  Como s2 é callee-saved, precisamos:
+#    - Salvar s2 na pilha no prólogo
+#    - Restaurar s2 da pilha no epílogo
+#
+#  Registradores usados:
+#    s2  → ponteiro auxiliar (aux = nó atual) — seguro vs ecall
+#    t2  → endereço da variável cabeca_da_lista
+#    a0  → argumento para syscalls
+#    a7  → código da syscall
+# ────────────────────────────────────────────────────────────
+imprime_lista:
+    # ── Prólogo: salva s2 (callee-saved que vamos usar) ─────
+    addi sp, sp, -4          # abre 4 bytes
+    sw   s2, 0(sp)           # salva s2 original na pilha
+                             # obrigatório pois s2 é callee-saved
+
+    # ── Passo 1: s2 = cabeca_da_lista (aux = first) ─────────
+    la   t2, cabeca_da_lista # t2 = endereço da variável global
+    lw   s2, 0(t2)           # s2 = primeiro nó da lista
+                             # s2 sobrevive a qualquer ecall
+
+# ── Loop de percurso ────────────────────────────────────────
+loop_imprime:
+    # Condição de parada: se s2 == 0 (NULL) → fim da lista
+    beq  s2, zero, fim_imprime   # aux == NULL? sai do loop
+
+    # Lê o valor do nó atual e imprime
+    lw   a0, 0(s2)           # a0 = nó->valor (offset 0)
+    li   a7, 1               # a7 = 1 → syscall print_integer
+    ecall                    # imprime — s2 preservado pelo ecall
+
+    # Imprime um espaço separador
+    la   a0, espaco          # a0 = endereço da string " "
+    li   a7, 4               # a7 = 4 → syscall print_string
+    ecall                    # imprime — s2 AINDA preservado
+
+    # Avança para o próximo nó: aux = aux->next
+    lw   s2, 4(s2)           # s2 = nó->next (offset 4)
+                             # leitura segura pois s2 não foi
+                             # corrompido pelos ecalls acima
+
+    j    loop_imprime        # volta para o início do loop
+
+fim_imprime:
+    # ── Epílogo: restaura s2 (obrigatório — callee-saved) ───
+    lw   s2, 0(sp)           # restaura s2 original
+    addi sp, sp, 4           # fecha frame
+
+    ret                      # retorna para main
+
+
+# ============================================================
+#  RESUMO DO FLUXO DE EXECUÇÃO
+# ============================================================
+#
+#  main
+#  │
+#  ├── insere_lista(10)
+#  │     pilha: [sp+4=ra][sp+0=10]
+#  │     └── aloca_no() → sbrk(8), retorna endereço base
+#  │     nó->valor = 10 (offset 0)
+#  │     nó->next  = 0  (offset 4, lista vazia)
+#  │     cabeca = nó(10)
+#  │     restaura ra, fecha pilha, retorna
+#  │
+#  ├── insere_lista(20)
+#  │     pilha: [sp+4=ra][sp+0=20]
+#  │     └── aloca_no() → novo endereço
+#  │     nó->valor = 20 (offset 0)
+#  │     nó->next  = endereço de nó(10) (offset 4)
+#  │     cabeca = nó(20)
+#  │     restaura ra, fecha pilha, retorna
+#  │
+#  ├── insere_lista(30)
+#  │     pilha: [sp+4=ra][sp+0=30]
+#  │     └── aloca_no() → novo endereço
+#  │     nó->valor = 30 (offset 0)
+#  │     nó->next  = endereço de nó(20) (offset 4)
+#  │     cabeca = nó(30)
+#  │     restaura ra, fecha pilha, retorna
+#  │
+#  └── imprime_lista()
+#        s2 = cabeca = nó(30)
+#        imprime 30 → s2 = nó(20)  ← s2 seguro após ecall
+#        imprime 20 → s2 = nó(10)  ← s2 seguro após ecall
+#        imprime 10 → s2 = 0 (NULL)← s2 seguro após ecall
+#        beq s2, zero → sai do loop
+#        restaura s2, retorna
+#
+#  Estado final da lista na memória:
+#
+#  cabeca_da_lista
+#       │
+#       ▼
+#  ┌────────┬────────┐    ┌────────┬────────┐    ┌────────┬────────┐
+#  │  30    │   ──────────►  20    │   ──────────►  10    │   0    │
+#  └────────┴────────┘    └────────┴────────┘    └────────┴────────┘
+#   nó 3 (último inserido)  nó 2                  nó 1       NULL
+#
+#  Saída esperada: 30 20 10
+# ============================================================
